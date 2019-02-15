@@ -110,6 +110,9 @@ class TarClient(VcsClientBase):
                 # print "filename", filename
             temp_tarfile = tarfile.open(filename, 'r:*')
             members = None  # means all members in extractall
+            # We're using versioned directories by default
+            # Note that everything is either versioned or not, there are no intermediate states
+            use_unversioned = False
             if version == '' or version is None:
                 subdir = tempdir
                 self.logger.warn("No tar subdirectory chosen via the 'version' argument for url: %s" % url)
@@ -120,17 +123,26 @@ class TarClient(VcsClientBase):
                 members = []
                 unversioned = re.sub(r'-[0-9.-]+$', '', version)
                 for m in temp_tarfile.getmembers():
-                    if m.name.startswith(version + '/') or m.name.startswith(unversioned + '/'):
+                    if m.name.startswith(version + '/'):
+                        members.append(m)
+                    elif m.name.startswith(unversioned + '/'):
+                        # This archive is unversioned
+                        use_unversioned = True
+                        # Replace with unversioned directory name
+                        m.name = re.sub('^'+version, unversioned, m.name)
                         members.append(m)
                     if m.name.split('/')[0] not in subdirs:
                         subdirs.append(m.name.split('/')[0])
                 if not members:
-                    raise VcsError("%s is not a subdirectory with contents in members %s" % (version, subdirs))
-                subdir = os.path.join(tempdir, version)
+                    raise VcsError("Neither %s nor %s is a subdirectory with contents in members %s" % (version, unversioned, subdirs))
+                if use_unversioned:
+                    subdir = os.path.join(tempdir, unversioned)
+                else:
+                    subdir = os.path.join(tempdir, version)
             temp_tarfile.extractall(path=tempdir, members=members)
 
             if not os.path.isdir(subdir):
-                raise VcsError("%s is not a subdirectory\n" % subdir)
+                raise VcsError("%s is not a subdirectory\n" % (subdir))
 
             try:
                 # os.makedirs(os.path.dirname(self._path))
@@ -156,9 +168,10 @@ class TarClient(VcsClientBase):
         """
         if not self.detect_presence():
             return False
-        if version != self.get_version():
-            sys.stderr.write("Tarball Client does not support updating with different version '%s' != '%s'\n"
-                             % (version, self.get_version()))
+        unversioned = re.sub(r'-[0-9.-]+$', '', version)
+        if version != self.get_version() and unversioned != self.get_version():
+            sys.stderr.write("Tarball Client does not support updating with different version '%s' != '%s' and '%s' != '%s'\n"
+                             % (version, self.get_version(), unversioned, self.get_version()))
             return False
 
         return True
