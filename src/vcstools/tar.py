@@ -46,6 +46,7 @@ import shutil
 import tarfile
 import sys
 import yaml
+import re
 from vcstools.vcs_base import VcsClientBase, VcsError
 from vcstools.common import urlretrieve_netrc, ensure_dir_notexists
 
@@ -117,8 +118,9 @@ class TarClient(VcsClientBase):
                 # relative path
                 subdirs = []
                 members = []
+                unversioned = re.sub(r'-[0-9.-]+$', '', version)
                 for m in temp_tarfile.getmembers():
-                    if m.name.startswith(version + '/'):
+                    if m.name.startswith(version + '/') or m.name.startswith(unversioned + '/'):
                         members.append(m)
                     if m.name.split('/')[0] not in subdirs:
                         subdirs.append(m.name.split('/')[0])
